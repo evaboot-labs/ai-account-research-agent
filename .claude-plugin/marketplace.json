@@ -1,0 +1,14 @@
+{
+  "name": "evaboot-labs-ai-account-research-agent",
+  "owner": { "name": "Evaboot", "url": "https://evaboot.com" },
+  "metadata": {
+    "description": "An AI Agent that researches your target accounts: decision makers, verified emails and a why-now brief per company, approved by you before it reaches your CRM."
+  },
+  "plugins": [
+    {
+      "name": "ai-account-research-agent",
+      "source": "./",
+      "description": "Find the sales leaders at your target accounts, get verified emails with Evaboot, and write a why-now brief per company from real data."
+    }
+  ]
+}

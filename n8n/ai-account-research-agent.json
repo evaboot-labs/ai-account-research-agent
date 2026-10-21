@@ -1,0 +1,972 @@
+{
+  "name": "AI account research agent (Evaboot MCP + Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Research target accounts",
+        "formDescription": "Your AI Agent finds the sales leaders at each company, gets their verified emails with Evaboot, and writes a why-now brief per company. The export costs 1 Evaboot credit per lead.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Target companies",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "One company name or LinkedIn company URL per line, about 10"
+            },
+            {
+              "fieldLabel": "Leaders per company",
+              "fieldType": "number",
+              "requiredField": true,
+              "placeholder": "3"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "152b26c6-df1e-4103-833e-313ade639540",
+      "name": "Target accounts",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b4ad9791-7025-40b4-902e-cbdc3a13d8e7",
+              "name": "sheet_url",
+              "type": "string",
+              "value": "PASTE_YOUR_GOOGLE_SHEET_URL_WITH_GID"
+            },
+            {
+              "id": "946a55f5-86d6-48e5-a7b5-1a4f0f3b3359",
+              "name": "crm",
+              "type": "string",
+              "value": "hubspot"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "4b67c912-fb3f-475b-9825-01799a75e8ec",
+      "name": "Your settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Target accounts').item.json['Target companies'] }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You resolve a user's target companies to their LinkedIn Sales Navigator company ids, then save them as one account list. Use only the Evaboot tools.\n\n1. For each company, call search_sn_accounts with search_url = https://www.linkedin.com/sales/search/company?query=(keywords:<company name, URL-encoded>) and count 5. The id is the number at the end of entityUrn (urn:li:fs_salesCompany:<id>).\n2. Pick the result whose name matches the company best. If the user gave a LinkedIn URL, use its id. If nothing matches, put the company in not_found.\n3. Call create_account_list_from_ids once with all the ids and list_name \"Account research - <today's date>\".\n4. Return the list id and, for each company, the exact name shown by Sales Navigator and its id.\n\nNever call any other tool. Never export anything.",
+          "maxIterations": 40
+        }
+      },
+      "id": "98110999-e16c-4349-90f2-29d991690c9c",
+      "name": "Resolve the companies",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-5-5",
+          "cachedResultName": "claude-sonnet-5-5"
+        },
+        "options": {
+          "maxTokensToSample": 4000
+        }
+      },
+      "id": "e9459c3f-bbdc-4d90-a067-893ff9680c42",
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        380,
+        220
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "",
+          "name": "Anthropic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.evaboot.com/mcp",
+        "authentication": "bearerAuth",
+        "include": "selected",
+        "includeTools": [
+          "search_sn_accounts",
+          "create_account_list_from_ids"
+        ],
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "2cd57a5b-2b16-4448-ba08-56092ecead73",
+      "name": "Evaboot MCP",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        500,
+        220
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Evaboot MCP (Bearer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"account_list_id\": \"7518731638898372608\",\n  \"companies\": [\n    {\n      \"name\": \"Pexip\",\n      \"id\": \"2914650\"\n    }\n  ],\n  \"not_found\": [\n    \"Acme\"\n  ]\n}"
+      },
+      "id": "26e1142f-5136-4ffc-85e6-9cf45b7c74b4",
+      "name": "Account list",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        620,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction unwrap(j) {\n  let d = j && j.structuredContent ? j.structuredContent : j;\n  if (d && Array.isArray(d.content) && d.content[0]) {\n    const t = d.content[0].text;\n    d = typeof t === 'string' ? JSON.parse(t) : t;\n  }\n  return d && d.result !== undefined ? d.result : d;\n}\n\n// Same URL as research.py people-url: the account list plus the sales leadership titles.\nconst TITLES = \"(CRO OR \\\"Chief Revenue Officer\\\" OR \\\"Chief Sales Officer\\\") OR ((VP OR \\\"Vice President\\\" OR SVP OR Director OR \\\"Senior Director\\\" OR Head OR \\\"Head of\\\") AND (Sales OR Revenue OR \\\"Business Development\\\" OR Commercial)) NOT (Assistant OR Coordinator OR Analyst OR Intern OR Trainee)\";\nfunction q(s, safe) {\n  return Array.from(new TextEncoder().encode(s)).map(b => {\n    const c = String.fromCharCode(b);\n    return /[A-Za-z0-9_.~-]/.test(c) || safe.includes(c) ? c : '%' + b.toString(16).toUpperCase().padStart(2, '0');\n  }).join('');\n}\nconst r = $('Resolve the companies').first().json.output;\nconst query = `(filters:List((type:ACCOUNT_LIST,values:List((id:${r.account_list_id},selectionType:INCLUDED))),` +\n  `(type:CURRENT_TITLE,values:List((text:${q(TITLES, '')},selectionType:INCLUDED)))))`;\nreturn [{ json: { search_url: 'https://www.linkedin.com/sales/search/people?query=' + q(query, '()'), count: 100 } }];\n"
+      },
+      "id": "c3d0da44-c473-45b5-96a4-152c641e50ed",
+      "name": "Build the people search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.evaboot.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "mode": "list",
+          "value": "search_sn_leads",
+          "cachedResultName": "search_sn_leads"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ JSON.stringify({ search_url: $json.search_url, count: $json.count }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "bb95fe7a-1288-4889-b755-70981f6ccd91",
+      "name": "Preview the sales leaders",
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        920,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Evaboot MCP (Bearer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction unwrap(j) {\n  let d = j && j.structuredContent ? j.structuredContent : j;\n  if (d && Array.isArray(d.content) && d.content[0]) {\n    const t = d.content[0].text;\n    d = typeof t === 'string' ? JSON.parse(t) : t;\n  }\n  return d && d.result !== undefined ? d.result : d;\n}\n\n// Same rules as research.py pick: most senior buyers first, global roles before regional ones.\nconst RANKS = [\n  [/\\b(chief (revenue|sales|commercial) officer|cro|cso)\\b/i, 1],\n  [/\\b(svp|evp|senior vice president|executive vice president)\\b/i, 2],\n  [/\\b(vp|vice president)\\b.*\\b(sales|revenue|business development|commercial)\\b/i, 3],\n  [/\\bhead of (global |international )?(sales|business development|revenue|commercial)\\b/i, 4],\n  [/\\b(senior director|sr\\.? director)\\b/i, 5],\n  [/\\bdirector\\b/i, 6],\n  [/\\bhead\\b/i, 7],\n];\nconst NOT_BUYERS = /pre[- ]?sales|engineering|enablement|post sales|partnerships?\\b(?!.*sales)/i;\n// \"CRO\" is also conversion rate optimization: a marketing or web title with no sales word is not a buyer.\nconst NOT_SALES = /optimi[sz]ation|marketing|\\bweb\\b/i;\nconst SALES_WORD = /sales|revenue|business development|commercial/i;\nconst SCOPED = /,| - | – |\\bregional\\b|\\bchannel\\b/i;\nconst rank = t => NOT_BUYERS.test(t) || (NOT_SALES.test(t) && !SALES_WORD.test(t)) ? 99 : (RANKS.find(([re]) => re.test(t)) || [0, 50])[1];\n\nconst data = unwrap($json);\nconst elements = (data.data && data.data.elements) || data.elements || [];\nconst resolved = $('Resolve the companies').first().json.output.companies.map(c => c.name);\nconst names = [...resolved].sort((a, b) => b.length - a.length);\nconst per = Number($('Target accounts').first().json['Leaders per company']) || 3;\nconst byCompany = {}, seen = new Set(), dropped = [];\nfor (const e of elements) {\n  const page = e.company.split(/\\s*[|(]/)[0].trim();\n  const account = names.find(a => page.toLowerCase().startsWith(a.toLowerCase()));\n  if (!account) { dropped.push(`${e.name} (${e.company})`); continue; }\n  const key = e.name.trim().toLowerCase() + '|' + account.toLowerCase();\n  if (seen.has(key)) continue;\n  seen.add(key);\n  (byCompany[account] = byCompany[account] || []).push({ ...e, account, rank: rank(e.title) });\n}\nconst chosen = [];\nfor (const people of Object.values(byCompany)) {\n  people.filter(p => p.rank < 99)\n    .sort((a, b) => a.rank - b.rank || SCOPED.test(a.title.trim()) - SCOPED.test(b.title.trim()))\n    .slice(0, per).forEach(p => chosen.push(p));\n}\nreturn [{ json: {\n  chosen, urns: chosen.map(p => p.entityUrn), dropped,\n  no_match: resolved.filter(a => !byCompany[a]),\n} }];\n"
+      },
+      "id": "d456c328-9621-4179-9c99-d48b9ea98b5d",
+      "name": "Pick the most senior",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.evaboot.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "mode": "list",
+          "value": "create_lead_list_from_ids",
+          "cachedResultName": "create_lead_list_from_ids"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ JSON.stringify({ profile_urns: $json.urns, list_name: 'Account research - picks ' + $now.toFormat('yyyy-MM-dd HH:mm') }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "58561393-078e-43f1-8e9b-c59654155f2b",
+      "name": "Save the picks as a lead list",
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        1360,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Evaboot MCP (Bearer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "id": "f260a0ff-2e69-48e3-bcd8-73645325da40",
+      "name": "Let LinkedIn save the list",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1470,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.evaboot.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "mode": "list",
+          "value": "export_sn_search_or_list",
+          "cachedResultName": "export_sn_search_or_list"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ JSON.stringify({ linkedin_url: 'https://www.linkedin.com/sales/lists/people/' + $json.structuredContent.result.batches[0].list_id, search_name: 'Account research - picks', list_category: 'all' }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "f1454052-26af-4085-8e42-8efb7a743e3d",
+      "name": "Export with emails",
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        1580,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Evaboot MCP (Bearer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "id": "0b3b4364-30f6-4079-988c-7730c9224ab0",
+      "name": "Wait 30 s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.evaboot.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "mode": "list",
+          "value": "get_export",
+          "cachedResultName": "get_export"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ JSON.stringify({ extraction_id: $('Export with emails').first().json.structuredContent.result.extraction_id }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "07b3aa73-3e50-42ce-9e94-28cf0c285d89",
+      "name": "Check the export",
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        2020,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Evaboot MCP (Bearer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ce8338e5-5e4d-403f-bc2d-8b558c418c99",
+              "leftValue": "={{ $json.structuredContent.result.status }}",
+              "rightValue": "EXECUTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f554ddbc-828a-4748-bb17-1d4bf65f5bf2",
+      "name": "Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction unwrap(j) {\n  let d = j && j.structuredContent ? j.structuredContent : j;\n  if (d && Array.isArray(d.content) && d.content[0]) {\n    const t = d.content[0].text;\n    d = typeof t === 'string' ? JSON.parse(t) : t;\n  }\n  return d && d.result !== undefined ? d.result : d;\n}\n\n// Same as research.py facts: real fields only, tenure = years * 12 + months.\nconst num = v => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return isNaN(n) ? null : n; };\nconst ids = new Set($('Resolve the companies').first().json.output.companies.map(c => String(c.id)));\nconst prospects = unwrap($json).prospects || [];\nif (!prospects.length) throw new Error('The export returned no leads. Open the lead list in Sales Navigator and check it is not empty.');\nconst out = {}, left = [];\nfor (const p of prospects) {\n  const cid = String(p['Company Linkedin URL Unique ID'] || '').replace(/\\/$/, '').split('/').pop();\n  if (!ids.has(cid)) { left.push({ name: p['Full Name'], now_at: p['Company Name'], title: p['Current Job'] }); continue; }\n  const c = out[p['Company Name']] = out[p['Company Name']] || {\n    company: p['Company Name'], employees: num(p['Company Employee Exact Count']) || null,\n    employee_range: p['Company Employee Range'] || '',\n    growth_6m_pct: num(p['Company Employee Growth 6 Months (%)']),\n    growth_1y_pct: num(p['Company Employee Growth 1 Year (%)']),\n    growth_2y_pct: num(p['Company Employee Growth 2 Years (%)']),\n    sales_team: num(p['Sales Team Size']), business_development_team: num(p['Business Development Size']),\n    description: String(p['Company Description'] || '').split(/\\s+/).join(' ').slice(0, 500), people: [],\n  };\n  c.people.push({\n    name: p['Full Name'] || '', title: String(p['Current Job'] || '').trim(),\n    email: p['Email'] || '', email_status: p['Email Status'] || 'not found',\n    months_in_position: (num(p['Years in Position']) || 0) * 12 + (num(p['Months in Position']) || 0),\n    new_in_role: ['true', 'yes', '1'].includes(String(p['Has New Position']).toLowerCase()),\n    linkedin: p['Linkedin URL Public'] || '',\n  });\n}\nreturn [{ json: { accounts: Object.values(out), left_account: left } }];\n"
+      },
+      "id": "f2829f9d-1476-4c8e-b3fe-09c3158baa67",
+      "name": "Company facts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2460,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json.accounts) }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You write a \"why now\" brief per company for a sales team, from the JSON facts you are given. Use only those facts: never add anything from memory.\n\nSignals, strongest first: a new sales leader (new_in_role true, or months_in_position under 6); fast growth (growth_2y_pct over 30, or growth_1y_pct over 15); two or more people under 12 months in role; team shape (sales_team, business_development_team); shrinking headcount (growth_2y_pct under -10).\nGrade (the signal field is exactly one word: strong, medium or weak): strong = a new sales leader, or fast growth with a new hire. medium = one weaker signal. weak = none: write \"No timing trigger\" and why, and leave the opener empty.\nRules: why_now is two sentences at most and names people by title, not by name. Always give the period of a growth number (\"up 50% in 2 years\"). A title that is no longer a sales title means the person moved on: say so. The opener is one or two sentences to the most senior contact, by first name: it names the signal and asks a question or makes one observation. No pitch, no product name.",
+          "maxIterations": 3
+        }
+      },
+      "id": "d45230f0-9542-4cf1-9f97-29705da39707",
+      "name": "Write the briefs",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        2680,
+        -100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-5-5",
+          "cachedResultName": "claude-sonnet-5-5"
+        },
+        "options": {
+          "maxTokensToSample": 6000
+        }
+      },
+      "id": "4f75cf4b-7baa-4d19-817a-148a52c44e41",
+      "name": "Claude (briefs)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        2640,
+        120
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "",
+          "name": "Anthropic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\n    \"briefs\"\n  ],\n  \"properties\": {\n    \"briefs\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"company\",\n          \"signal\",\n          \"why_now\",\n          \"opener\"\n        ],\n        \"properties\": {\n          \"company\": {\n            \"type\": \"string\"\n          },\n          \"signal\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"strong\",\n              \"medium\",\n              \"weak\"\n            ]\n          },\n          \"why_now\": {\n            \"type\": \"string\"\n          },\n          \"opener\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}"
+      },
+      "id": "8f990691-355c-45fd-91e5-25d10c3c197d",
+      "name": "Briefs",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2780,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// One row per contact; the company's brief sits on its first row. Strong accounts first.\nconst order = { strong: 0, medium: 1, weak: 2 };\nconst briefs = Object.fromEntries($json.output.briefs.map(b => [b.company, b]));\nconst accounts = $('Company facts').first().json.accounts\n  .sort((a, b) => (order[(briefs[a.company] || {}).signal] ?? 3) - (order[(briefs[b.company] || {}).signal] ?? 3));\nconst rows = [];\nfor (const c of accounts) {\n  const b = briefs[c.company] || {};\n  c.people.forEach((p, i) => rows.push({ json: {\n    'Company': c.company, 'Signal': i ? '' : b.signal || '', 'Why now': i ? '' : b.why_now || '',\n    'Suggested opener': i ? '' : b.opener || '', 'Contact': p.name, 'Title': p.title,\n    'Email': p.email, 'Email status': p.email_status, 'LinkedIn': p.linkedin, 'Approve (yes/no)': '',\n  } }));\n}\nreturn rows;\n"
+      },
+      "id": "afc049cf-da06-479e-80b5-a7f18a4c0d92",
+      "name": "One row per contact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $('Your settings').first().json.sheet_url }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $('Your settings').first().json.sheet_url }}"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "80f714f6-34b9-4127-97a7-727bb7fa486e",
+      "name": "Add to the approval sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3120,
+        -100
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      },
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Push these leads to your CRM?",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Yes, push them"
+                  },
+                  {
+                    "option": "No, stop here"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "formTitle": "Review the sheet",
+          "formDescription": "Read the briefs in your approval sheet first. The push sends every exported lead, so delete the ones you reject in the CRM afterwards."
+        }
+      },
+      "id": "969ca548-d916-4e72-bf54-3ef982ec6db7",
+      "name": "Approve",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        3340,
+        -100
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c5cf7618-f9d1-4ce6-9f4a-6fb43b080a3e",
+              "leftValue": "={{ $json['Push these leads to your CRM?'] }}",
+              "rightValue": "Yes, push them",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dc304849-ce65-4a36-affc-adbdb5dad287",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3560,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.evaboot.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "mode": "list",
+          "value": "list_integrations",
+          "cachedResultName": "list_integrations"
+        },
+        "inputMode": "json",
+        "jsonInput": "{}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "167daef0-6031-436d-a543-2a688ab63c7d",
+      "name": "Find the CRM",
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        3780,
+        -200
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Evaboot MCP (Bearer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction unwrap(j) {\n  let d = j && j.structuredContent ? j.structuredContent : j;\n  if (d && Array.isArray(d.content) && d.content[0]) {\n    const t = d.content[0].text;\n    d = typeof t === 'string' ? JSON.parse(t) : t;\n  }\n  return d && d.result !== undefined ? d.result : d;\n}\n\nconst want = String($('Your settings').first().json.crm).toLowerCase();\nconst rows = unwrap($json).integrations || [];\nconst crm = rows.find(r => r.type === want && r.setup_finished && r.status === 'active');\nif (!crm) throw new Error(`No connected ${want} destination in Evaboot. Connect it at https://dash.evaboot.com/dash/integrations/`);\nreturn [{ json: { integration_id: crm.id, label: crm.label } }];\n"
+      },
+      "id": "d3ed0caa-4379-4ee3-a8f7-353768b1a83f",
+      "name": "Pick the CRM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.evaboot.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "mode": "list",
+          "value": "push_export",
+          "cachedResultName": "push_export"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ JSON.stringify({ integration_id: $json.integration_id, extraction_id: $('Export with emails').first().json.structuredContent.result.extraction_id }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "f6655f2c-62c8-42f6-91cd-8b93e9d41038",
+      "name": "Push to the CRM",
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        4220,
+        -200
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Evaboot MCP (Bearer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Leads pushed",
+        "completionMessage": "The approved leads are on their way to your CRM.",
+        "options": {}
+      },
+      "id": "68d182bc-7bee-49f8-bf21-08538cab20ef",
+      "name": "Pushed",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        4440,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Nothing pushed",
+        "completionMessage": "The briefs stay in your sheet.",
+        "options": {}
+      },
+      "id": "55c77cdb-ca71-406e-8225-e58a5e9f9f1f",
+      "name": "Stopped",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        3780,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Target accounts": {
+      "main": [
+        [
+          {
+            "node": "Your settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Your settings": {
+      "main": [
+        [
+          {
+            "node": "Resolve the companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve the companies": {
+      "main": [
+        [
+          {
+            "node": "Build the people search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build the people search": {
+      "main": [
+        [
+          {
+            "node": "Preview the sales leaders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview the sales leaders": {
+      "main": [
+        [
+          {
+            "node": "Pick the most senior",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick the most senior": {
+      "main": [
+        [
+          {
+            "node": "Save the picks as a lead list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save the picks as a lead list": {
+      "main": [
+        [
+          {
+            "node": "Let LinkedIn save the list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Let LinkedIn save the list": {
+      "main": [
+        [
+          {
+            "node": "Export with emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export with emails": {
+      "main": [
+        [
+          {
+            "node": "Wait 30 s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30 s": {
+      "main": [
+        [
+          {
+            "node": "Check the export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check the export": {
+      "main": [
+        [
+          {
+            "node": "Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company facts": {
+      "main": [
+        [
+          {
+            "node": "Write the briefs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write the briefs": {
+      "main": [
+        [
+          {
+            "node": "One row per contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One row per contact": {
+      "main": [
+        [
+          {
+            "node": "Add to the approval sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find the CRM": {
+      "main": [
+        [
+          {
+            "node": "Pick the CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick the CRM": {
+      "main": [
+        [
+          {
+            "node": "Push to the CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push to the CRM": {
+      "main": [
+        [
+          {
+            "node": "Pushed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done?": {
+      "main": [
+        [
+          {
+            "node": "Company facts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 30 s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Find the CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stopped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Resolve the companies",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaboot MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "Resolve the companies",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Account list": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Resolve the companies",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude (briefs)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Write the briefs",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Briefs": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Write the briefs",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to the approval sheet": {
+      "main": [
+        [
+          {
+            "node": "Approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

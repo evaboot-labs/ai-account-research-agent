@@ -1,0 +1,7 @@
+{"layout": "flow", "eyebrow": "evaboot-labs · ai-account-research-agent", "headline": "Know who to call, and why now.",
+ "subline": "10 target accounts in. Decision makers, verified emails and a why-now brief out.",
+ "nodes": [{"label": "01 · Accounts", "title": "Your target list", "caption": "About 10 companies"},
+           {"label": "02 · Buyers", "title": "Sales Navigator", "caption": "Top 3 sales leaders"},
+           {"label": "03 · Research", "title": "Evaboot + AI Agent", "caption": "Emails, why-now brief"},
+           {"label": "04 · Result", "title": "Approved leads", "caption": "Pushed to your CRM"}],
+ "spec": "server <em>mcp.evaboot.com/mcp</em> · give this repo to your agent"}

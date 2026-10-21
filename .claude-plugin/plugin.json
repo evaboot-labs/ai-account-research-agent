@@ -1,0 +1,13 @@
+{
+  "name": "ai-account-research-agent",
+  "version": "1.0.0",
+  "description": "Find the sales leaders at your target accounts, get verified emails with Evaboot, and write a why-now brief per company from real data.",
+  "author": { "name": "Evaboot", "url": "https://evaboot.com" },
+  "homepage": "https://evaboot.com/blog/how-to-build-an-ai-sales-agent",
+  "repository": "https://github.com/evaboot-labs/ai-account-research-agent",
+  "license": "MIT",
+  "privacyPolicyUrl": "https://evaboot.com/privacy-policy",
+  "keywords": ["account-research", "account-based-marketing", "sales-navigator", "evaboot", "mcp", "ai-agent"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}
