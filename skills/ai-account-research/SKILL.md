@@ -19,9 +19,11 @@ You do the Sales Navigator and Evaboot work through the Evaboot MCP server (`htt
 
 ## Step 0: check the setup
 
-1. Call `verify_token` and `get_daily_export_quota`. `has_valid_salesnav` must be true. If not, send the user to `docs/connect-your-agent.md`, step 1.
-2. Read `TARGET.md`. If it still holds the example, ask the user which roles they sell to and update it. If they change the titles, update `TITLES` and `RANKS` in `research.py` to match.
-3. Ask for the target companies: names or LinkedIn company URLs, about 10. More than 25 makes the sheet hard to review.
+1. If the Evaboot MCP tools are not in this session, the user is not connected yet. Walk them through `docs/connect-your-agent.md`, then ask them to restart the agent from this folder: the key in `EVABOOT_API_KEY` is read only when the agent starts. Meanwhile, do step 2.
+2. Otherwise call `verify_token` and `get_daily_export_quota`. `has_valid_salesnav` must be true. If not, send the user to `docs/connect-your-agent.md`, step 1.
+3. Run `mkdir -p data research`. Both folders are git-ignored: they hold real people's data.
+4. Read `TARGET.md`. If it still holds the example, ask the user which roles they sell to and update it. If they change the titles, update `TITLES` and `RANKS` in `research.py` to match.
+5. Ask for the target companies, if the user has not given them yet: names or LinkedIn company URLs, about 10. More than 25 makes the sheet hard to review.
 
 ## Step 1: resolve each company to its LinkedIn id
 

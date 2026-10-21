@@ -14,7 +14,7 @@ The prompt in the README does all of this for you. These are the same steps, for
    cp .env.example .env          # paste the key after EVABOOT_API_KEY=
    export EVABOOT_API_KEY=...    # same key, for your agent
    ```
-   - **Claude Code** reads `.mcp.json` in this folder and uses `EVABOOT_API_KEY` from your environment.
+   - **Claude Code** reads `.mcp.json` in this folder and uses `EVABOOT_API_KEY` from your environment. Export the key before you start Claude Code: a session that is already open does not see it.
    - **Codex:** `codex mcp add evaboot --url https://mcp.evaboot.com/mcp --bearer-token-env-var EVABOOT_API_KEY`
    - **Cursor:** add `https://mcp.evaboot.com/mcp` with the header `Authorization: Bearer <your key>`.
    - **Claude or ChatGPT on the web:** add `https://mcp.evaboot.com/mcp` as a custom connector and sign in.
